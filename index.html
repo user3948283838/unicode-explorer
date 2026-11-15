@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unicode Explorer | Все символы</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: white; padding: 20px; }
+        
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #38bdf8; font-size: 32px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+        .header p { color: #94a3b8; margin-top: 5px; }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+        input[type="text"] { flex: 1; min-width: 200px; padding: 12px 20px; border-radius: 25px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 16px; outline: none; }
+        select { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 16px; outline: none; cursor: pointer; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 10px; }
+        .char-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
+        .char-box:hover { background: #334155; transform: scale(1.1); border-color: #38bdf8; z-index: 10; box-shadow: 0 0 15px rgba(56, 189, 248, 0.5); }
+        .char { font-size: 28px; display: block; margin-bottom: 5px; }
+        .code { font-size: 10px; color: #64748b; font-family: monospace; }
+        
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #22c55e; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🔣 Unicode Explorer</h1>
+        <p>Исследуй и копируй любые символы: от базовых до эмодзи</p>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="search" placeholder="Поиск по коду (например, 1F600)..." oninput="filterChars()">
+        <select id="rangeSelect" onchange="loadRange()">
+            <option value="basic">Базовые (0x0020 - 0x007F)</option>
+            <option value="latin">Латиница (0x00A0 - 0x024F)</option>
+            <option value="symbols">Символы (0x2000 - 0x27FF)</option>
+            <option value="emoji">Эмодзи (0x1F600 - 0x1F64F)</option>
+            <option value="all">Всё (0x0000 - 0x1FFFF)</option>
+        </select>
+    </div>
+
+    <div class="grid" id="grid"></div>
+    <div id="toast">Скопировано!</div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        let currentChars = [];
+
+        // Генерация диапазона символов
+        function generateRange(start, end) {
+            let chars = [];
+            for (let i = start; i <= end; i++) {
+                try {
+                    let char = String.fromCodePoint(i);
+                    // Пропускаем невидимые символы (кроме пробела)
+                    if (char.trim() !== '' || i === 32) {
+                        chars.push({ char: char, code: i.toString(16).toUpperCase().padStart(4, '0') });
+                    }
+                } catch (e) {}
+            }
+            return chars;
+        }
+
+        // Загрузка выбранного диапазона
+        function loadRange() {
+            const range = document.getElementById('rangeSelect').value;
+            let start = 0, end = 0;
+            if (range === 'basic') { start = 0x0020; end = 0x007F; }
+            else if (range === 'latin') { start = 0x00A0; end = 0x024F; }
+            else if (range === 'symbols') { start = 0x2000; end = 0x27FF; }
+            else if (range === 'emoji') { start = 0x1F600; end = 0x1F64F; }
+            else if (range === 'all') { start = 0x0000; end = 0x1FFFF; }
+            currentChars = generateRange(start, end);
+            renderChars(currentChars);
+        }
+
+        // Отрисовка символов (лимит 1000 для производительности)
+        function renderChars(chars) {
+            grid.innerHTML = '';
+            const limit = Math.min(chars.length, 1000);
+            
+            for (let i = 0; i < limit; i++) {
+                const box = document.createElement('div');
+                box.className = 'char-box';
+                box.innerHTML = `<span class="char">${chars[i].char}</span><span class="code">${chars[i].code}</span>`;
+                box.onclick = () => copyChar(chars[i].char);
+                grid.appendChild(box);
+            }
+            
+            if (chars.length > limit) {
+                const info = document.createElement('div');
+                info.style.gridColumn = '1 / -1';
+                info.style.textAlign = 'center';
+                info.style.color = '#94a3b8';
+                info.style.padding = '20px';
+                info.innerText = `Показано ${limit} из ${chars.length} символов.`;
+                grid.appendChild(info);
+            }
+        }
+
+        // Копирование символа (с фоллбэком)
+        function copyChar(char) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(char).then(() => {
+                    showToast();
+                }).catch(() => {
+                    fallbackCopy(char);
+                });
+            } else {
+                fallbackCopy(char);
+            }
+        }
+
+        // Старый метод копирования (для локальных файлов)
+        function fallbackCopy(char) {
+            const textArea = document.createElement("textarea");
+            textArea.value = char;
+            textArea.style.position = "fixed";
+            textArea.style.top = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast();
+            } catch (err) {
+                alert("Не удалось скопировать: " + char);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // Показ уведомления
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 1000);
+        }
+
+        // Фильтрация по коду
+        function filterChars() {
+            const query = document.getElementById('search').value.toUpperCase();
+            if (!query) return renderChars(currentChars);
+            
+            const filtered = currentChars.filter(c => c.code.includes(query));
+            renderChars(filtered);
+        }
+
+        // Запуск при загрузке
+        loadRange();
+    </script>
+</body>
+  </html>
